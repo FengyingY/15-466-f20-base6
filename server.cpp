@@ -1,13 +1,17 @@
 
 #include "Connection.hpp"
 
+#include "glm/fwd.hpp"
+#include <glm/gtc/type_ptr.hpp>
 #include "hex_dump.hpp"
 
 #include <chrono>
 #include <stdexcept>
 #include <iostream>
 #include <cassert>
+#include <string>
 #include <unordered_map>
+
 
 int main(int argc, char **argv) {
 #ifdef _WIN32
@@ -33,17 +37,14 @@ int main(int argc, char **argv) {
 	//server state:
 	struct TransformState
 	{
-		float pos_x = 0.f, pos_y = 0.f, pos_z = 0.f;
-		float speed = 0.f;
+		glm::vec3 pos = glm::vec3(0, 0, 0);
+		float mass = 60.f;
+		glm::vec2 force;
+		glm::vec2 speed;
+
 		std::string name;
 	};
 	std::vector<TransformState> balls;
-
-	struct PlayerState
-	{
-		float pos_x = 0.f, pos_y = 0.f, pos_z = 0.f;
-	};
-	std::vector<PlayerState> player_states;
 	
 	//per-client state:
 	struct PlayerInfo {
@@ -59,9 +60,12 @@ int main(int argc, char **argv) {
 		uint32_t up_presses = 0;
 		uint32_t down_presses = 0;
 
-
-		int32_t total = 0;
-
+		glm::vec3 pos = glm::vec3(0, 0, 0);
+		float t;
+		float elapsed;
+		float mass = 30.f;
+		float speed = 30.f;
+		int score = 0;
 	};
 	std::unordered_map< Connection *, PlayerInfo > players;
 
@@ -80,7 +84,14 @@ int main(int argc, char **argv) {
 					//client connected:
 
 					//create some player info for them:
-					players.emplace(c, PlayerInfo());
+					PlayerInfo new_player = PlayerInfo();
+					// first player
+					if (players.size() == 0) {
+						new_player.pos.x = -1.f;
+					} else { // second player
+						new_player.pos.x = 1.f;
+					}
+					players.emplace(c, new_player);
 
 
 				} else if (evt == Connection::OnClose) {
@@ -141,7 +152,7 @@ int main(int argc, char **argv) {
 							std::string next_ball = data.substr(0, data.find(delimiter));
 							last->name = next_ball.substr(0, next_ball.find(','));
 							next_ball.erase(0, next_ball.find(",")+1);
-							sscanf(next_ball.c_str(),"%f,%f,%f", &last->pos_x, &last->pos_y, &last->pos_z);
+							sscanf(next_ball.c_str(),"%f,%f,%f", &last->pos.x, &last->pos.y, &last->pos.z);
 							data.erase(0, data.find(delimiter) + delimiter.length());
 						}
 
@@ -149,6 +160,8 @@ int main(int argc, char **argv) {
 						float elapsed;
 						std::cout << data << "\n";
 						sscanf(data.c_str(), "%lu;%f$", &timestamp, &elapsed);
+						player.elapsed = elapsed;
+						player.t = elapsed;
   
 						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + size_size + size);
 					}
@@ -158,34 +171,45 @@ int main(int argc, char **argv) {
 
 		//update current game state
 		//TODO: replace with *your* game state update
-		std::string status_message = "";
-		int32_t overall_sum = 0;
-		for (auto &[c, player] : players) {
-			(void)c; //work around "unused variable" warning on whatever version of g++ github actions is running
-			for (; player.left_presses > 0; --player.left_presses) {
-				player.total -= 1;
-			}
-			for (; player.right_presses > 0; --player.right_presses) {
-				player.total += 1;
-			}
-			for (; player.down_presses > 0; --player.down_presses) {
-				player.total -= 10;
-			}
-			for (; player.up_presses > 0; --player.up_presses) {
-				player.total += 10;
-			}
-			if (status_message != "") status_message += " + ";
-			status_message += std::to_string(player.total) + " (" + player.name + ")";
+		
+		// player-player collision detetion
+		// update the 't' of each player
+		
 
-			overall_sum += player.total;
+		// player-ball collision detection
+		// 1. accumulate the ball's force 
+		// 2. update the player's t if necessary 
+			
+
+		std::string status_message = "";
+		int total_score = 0;
+		for (auto &[c, player] : players) {
+			// TODO  update the position with t of players and ball's force
+
+			// send the latest position to clients 
+			glm::vec3 dir = glm::vec3(player.right_presses - player.left_presses, player.up_presses - player.down_presses, 0);
+			player.pos += player.t * dir * player.speed;
+
+			(void)c; //work around "unused variable" warning on whTODOatever version of g++ github actions is running
+
+			status_message += player.name + std::to_string(player.pos.x) + "," + 
+							  std::to_string(player.pos.y) + "," + 
+							  std::to_string(player.pos.z) + "|";
+
+			total_score += player.score;
 		}
-		status_message += " = " + std::to_string(overall_sum);
+		for (auto ball : balls) {
+			status_message += ball.name + std::to_string(ball.pos.x) + "," + 
+							  std::to_string(ball.pos.y) + "," + 
+							  std::to_string(ball.pos.z) + "|";
+		}
 		//std::cout << status_message << std::endl; //DEBUG
 
 		//send updated game state to all clients
 		//TODO: update for your game state
 		for (auto &[c, player] : players) {
 			(void)player; //work around "unused variable" warning on whatever g++ github actions uses
+			status_message += std::to_string(player.score) + "|" + std::to_string(total_score - player.score);
 			//send an update starting with 'm', a 24-bit size, and a blob of text:
 			c->send('m');
 			c->send(uint8_t(status_message.size() >> 16));
