@@ -35,6 +35,9 @@ struct PlayMode : Mode {
 	std::vector<Scene::Transform*> balls;
 	Scene::Camera *camera = nullptr;
 	
-	Scene::Transform* player;
+	std::vector<Scene::Transform*> players;
+
+	unsigned int my_score;
+	unsigned int opponent_score;
 
 };

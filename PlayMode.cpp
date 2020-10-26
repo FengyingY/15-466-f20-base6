@@ -81,10 +81,14 @@ PlayMode::PlayMode(Client &client_) : client(client_), scene(*pool_scene) {
 	data += std::to_string(0.f);
 	data += "$";
 
-	std::string size = std::to_string(data.size());
-	client.connections.back().send(uint8_t(size.size()));
-	client.connections.back().send(size);
-	client.connections.back().send(data);
+	std::cout << data.length() << "\n";
+	std::cout << data << "\n";
+
+	std::string size = std::to_string(data.length());
+	Connection &c = client.connections.back();
+	c.send(uint8_t(size.length()));
+	c.send_buffer.insert(c.send_buffer.end(), size.begin(), size.end());
+	c.send_buffer.insert(c.send_buffer.end(), data.begin(), data.end());
 }
 
 PlayMode::~PlayMode() {
@@ -152,10 +156,11 @@ void PlayMode::update(float elapsed) {
 	data += std::to_string(elapsed);
 	data += "$";
 
-	std::string size = std::to_string(data.size());
-	client.connections.back().send(uint8_t(size.size()));
-	client.connections.back().send(size);
-	client.connections.back().send(data);
+	std::string size = std::to_string(data.length());
+	Connection &c = client.connections.back();
+	c.send(uint8_t(size.length()));
+	c.send_buffer.insert(c.send_buffer.end(), size.begin(), size.end());
+	c.send_buffer.insert(c.send_buffer.end(), data.begin(), data.end());
 
 	
 	//reset button press counters:
@@ -174,6 +179,7 @@ void PlayMode::update(float elapsed) {
 		} else { assert(event == Connection::OnRecv);
 			std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush();
 			//expecting message(s) like 'm' + 3-byte length + length bytes of text:
+			// messages like name0=(x,y,z), ... , name15=(x,y,z), [my_score], [opponent_score]
 			while (c->recv_buffer.size() >= 4) {
 				std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush();
 				char type = c->recv_buffer[0];
@@ -192,6 +198,23 @@ void PlayMode::update(float elapsed) {
 			}
 		}
 	}, 0.0);
+
+	// for (auto& transform: balls)
+	// {
+	// 	// get pos for transforms
+	// 	// set pos for transforms
+	// }
+
+	// for (auto& transform: players)
+	// {
+	// 	// get & set pos for players
+	// }
+
+	/*
+	my_score = ?;
+	opponent_score = ?;
+	*/
+
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {

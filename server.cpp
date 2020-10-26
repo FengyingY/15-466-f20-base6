@@ -124,11 +124,10 @@ int main(int argc, char **argv) {
 						
 						uint8_t size_size = c->recv_buffer[5];
 						std::string size_str(&c->recv_buffer[6], size_size);
-						std::cout << size_str.length() << " " << size_str.c_str() << " " << size_str.c_str()[0] << " " <<  size_str.c_str()[1] << " " << size_str.c_str()[2] << "\n";
-						size_t size = atol(size_str.c_str()); // TODO always fail？？？
-						std::cout << "data size=" << size << " " << strtol(size_str.c_str(), NULL, 10) << "\n";
+						
+						size_t size; // TODO always fail？？？
+						sscanf(size_str.c_str(), "%lu", &size);
 						std::string data(&c->recv_buffer[6+size_size], size);
-						std::cout << data << "\n";
 
 						std::string delimiter = ";";
 						std::string ball_size_str = data.substr(0, data.find(delimiter));
@@ -138,20 +137,20 @@ int main(int argc, char **argv) {
 						for (size_t i = 0; i < ball_size; i++)
 						{
 							balls.emplace_back();
-							auto &last = balls[i];
+							auto last = &balls[i];
 							std::string next_ball = data.substr(0, data.find(delimiter));
-							sscanf (next_ball.c_str(),"%s,%f,%f,%f",&last.name[0],&last.pos_x, &last.pos_y, &last.pos_z);
+							last->name = next_ball.substr(0, next_ball.find(','));
+							next_ball.erase(0, next_ball.find(",")+1);
+							sscanf(next_ball.c_str(),"%f,%f,%f", &last->pos_x, &last->pos_y, &last->pos_z);
 							data.erase(0, data.find(delimiter) + delimiter.length());
 						}
 
 						std::time_t timestamp;
 						float elapsed;
+						std::cout << data << "\n";
 						sscanf(data.c_str(), "%lu;%f$", &timestamp, &elapsed);
-
-						printf ("The value entered is %ld. Its double is %f.\n", timestamp, elapsed);
   
-						std::cout << "ts=" << timestamp << " elapsed=" << elapsed << "\n";
-						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() +6 + size_size + size);
+						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + size_size + size);
 					}
 				}
 			}, remain);
