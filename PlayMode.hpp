@@ -1,6 +1,7 @@
 #include "Mode.hpp"
 
 #include "Connection.hpp"
+#include "Scene.hpp"
 
 #include <glm/glm.hpp>
 
@@ -21,7 +22,7 @@ struct PlayMode : Mode {
 	//input tracking:
 	struct Button {
 		uint8_t downs = 0;
-		uint8_t pressed = 0;
+		uint8_t pressed = 0; 
 	} left, right, down, up;
 
 	//last message from server:
@@ -29,5 +30,11 @@ struct PlayMode : Mode {
 
 	//connection to server:
 	Client &client;
+	Scene scene;
+
+	std::vector<Scene::Transform*> balls;
+	Scene::Camera *camera = nullptr;
+	
+	Scene::Transform* player;
 
 };

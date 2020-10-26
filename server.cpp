@@ -31,6 +31,13 @@ int main(int argc, char **argv) {
 	constexpr float ServerTick = 1.0f / 10.0f; //TODO: set a server tick that makes sense for your game
 
 	//server state:
+	struct TransformState
+	{
+		float pos_x = 0.f, pos_y = 0.f, pos_z = 0.f;
+		float speed = 0.f;
+		std::string name;
+	};
+	std::vector<TransformState> balls;
 
 	//per-client state:
 	struct PlayerInfo {
@@ -89,7 +96,7 @@ int main(int argc, char **argv) {
 
 					//handle messages from client:
 					//TODO: update for the sorts of messages your clients send
-					while (c->recv_buffer.size() >= 5) {
+					while (c->recv_buffer.size() >= 6) {
 						//expecting five-byte messages 'b' (left count) (right count) (down count) (up count)
 						char type = c->recv_buffer[0];
 						if (type != 'b') {
@@ -107,8 +114,31 @@ int main(int argc, char **argv) {
 						player.right_presses += right_count;
 						player.down_presses += down_count;
 						player.up_presses += up_count;
+						
+						uint8_t ball_size = c->recv_buffer[5];
 
-						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 5);
+						if (balls.size() == 0)
+						{
+							for (size_t i = 0; i < ball_size; i++)
+							{
+								balls.emplace_back();
+								auto &last = balls[i];
+								for (size_t j = 0; j < 7; j++)
+								{
+									last.name += (c->recv_buffer[6+i*19+j]);
+								}
+								std::cout << last.name << "\n";
+								std::string px(&c->recv_buffer[6+i*19+7], 4);
+								last.pos_x = atof(px.c_str());
+								std::string py(&c->recv_buffer[6+i*19+11], 4);
+								last.pos_y = atof(py.c_str());
+								std::string pz(&c->recv_buffer[6+i*19+15], 4);
+								last.pos_z = atof(pz.c_str());
+							}
+							std::cout << balls.size() << "\n";							
+						}
+
+						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + ball_size * 19);
 					}
 				}
 			}, remain);
