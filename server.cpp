@@ -103,7 +103,7 @@ int main(int argc, char **argv) {
 
 					//handle messages from client:
 					//TODO: update for the sorts of messages your clients send
-					while (c->recv_buffer.size() >= 6) {
+					while (c->recv_buffer.size() >= 5) {
 						//expecting five-byte messages 'b' (left count) (right count) (down count) (up count)
 						char type = c->recv_buffer[0];
 						if (type != 'b') {
@@ -122,46 +122,36 @@ int main(int argc, char **argv) {
 						player.down_presses += down_count;
 						player.up_presses += up_count;
 						
-						uint8_t ball_size = c->recv_buffer[5];
+						uint8_t size_size = c->recv_buffer[5];
+						std::string size_str(&c->recv_buffer[6], size_size);
+						std::cout << size_str.length() << " " << size_str.c_str() << " " << size_str.c_str()[0] << " " <<  size_str.c_str()[1] << " " << size_str.c_str()[2] << "\n";
+						size_t size = atol(size_str.c_str()); // TODO always fail？？？
+						std::cout << "data size=" << size << " " << strtol(size_str.c_str(), NULL, 10) << "\n";
+						std::string data(&c->recv_buffer[6+size_size], size);
+						std::cout << data << "\n";
 
-						if (balls.size() == 0)
+						std::string delimiter = ";";
+						std::string ball_size_str = data.substr(0, data.find(delimiter));
+						size_t ball_size = atol(ball_size_str.c_str());
+						data.erase(0, data.find(delimiter) + delimiter.length());
+
+						for (size_t i = 0; i < ball_size; i++)
 						{
-							for (size_t i = 0; i < ball_size; i++)
-							{
-								balls.emplace_back();
-								auto &last = balls[i];
-								for (size_t j = 0; j < 7; j++)
-								{
-									last.name += (c->recv_buffer[6+i*19+j]);
-								}
-								std::cout << last.name << "\n";
-								std::string px(&c->recv_buffer[6+i*19+7], 4);
-								last.pos_x = atof(px.c_str());
-								std::string py(&c->recv_buffer[6+i*19+11], 4);
-								last.pos_y = atof(py.c_str());
-								std::string pz(&c->recv_buffer[6+i*19+15], 4);
-								last.pos_z = atof(pz.c_str());
-							}
-							std::cout << balls.size() << "\n";							
+							balls.emplace_back();
+							auto &last = balls[i];
+							std::string next_ball = data.substr(0, data.find(delimiter));
+							sscanf (next_ball.c_str(),"%s,%f,%f,%f",&last.name[0],&last.pos_x, &last.pos_y, &last.pos_z);
+							data.erase(0, data.find(delimiter) + delimiter.length());
 						}
 
-						uint8_t player_size = c->recv_buffer[6 + ball_size * 19];
-						std::cout << player_size << "\n";
-						if (player_states.size() == 0)
-						{
-							for (size_t i = 0; i < player_size; i++)
-							{
-								player_states.emplace_back();
-								auto &last = player_states[i];
-								std::string px(&c->recv_buffer[6 + ball_size * 19 + 1 +i*12], 4);
-								last.pos_x = atof(px.c_str());
-								std::string py(&c->recv_buffer[6 + ball_size * 19 + 1 +i*12 + 4], 4);
-								last.pos_y = atof(py.c_str());
-								std::string pz(&c->recv_buffer[6 + ball_size * 19 + 1 +i*12 + 8], 4);
-								last.pos_z = atof(pz.c_str());
-							}
-						}
-						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + ball_size * 19 + 1 + player_size * 12);
+						std::time_t timestamp;
+						float elapsed;
+						sscanf(data.c_str(), "%lu;%f$", &timestamp, &elapsed);
+
+						printf ("The value entered is %ld. Its double is %f.\n", timestamp, elapsed);
+  
+						std::cout << "ts=" << timestamp << " elapsed=" << elapsed << "\n";
+						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() +6 + size_size + size);
 					}
 				}
 			}, remain);

@@ -8,6 +8,8 @@
 #include "hex_dump.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
+#include <ctime>
+#include <iostream>
 
 #include <random>
 #include "Load.hpp"
@@ -48,6 +50,7 @@ PlayMode::PlayMode(Client &client_) : client(client_), scene(*pool_scene) {
 		{
 			players.emplace_back(&transform);
 		}
+		std::cout << transform.name.c_str() << "\n" ;
 	}
 
 	camera = &scene.cameras.front();
@@ -57,27 +60,31 @@ PlayMode::PlayMode(Client &client_) : client(client_), scene(*pool_scene) {
 	client.connections.back().send(right.downs);
 	client.connections.back().send(down.downs);
 	client.connections.back().send(up.downs);
-	client.connections.back().send(uint8_t(balls.size()));
+	std::string data;
+	data += std::to_string(balls.size());
+	data += ";";
 	for (auto &ball:balls)
 	{
-		for (size_t i = 0; i < 7; i++)
-		{
-			client.connections.back().send(ball->name[i]); // len = 7
-		}
-		
-		client.connections.back().send((ball->position.x));
-		client.connections.back().send((ball->position.y));
-		client.connections.back().send((ball->position.z));
+		data += ball->name;
+		data += ",";
+		data += std::to_string(ball->position.x);
+		data += ",";
+		data += std::to_string(ball->position.y);
+		data += ",";
+		data += std::to_string(ball->position.z);
+		data += ";";
 	}
 
-	client.connections.back().send(uint8_t(players.size()));
-	for (auto &p:players)
-	{
-		client.connections.back().send((p->position.x));
-		client.connections.back().send((p->position.y));
-		client.connections.back().send((p->position.z));
-	}
-	
+	std::time_t result = std::time(nullptr);
+	data += std::to_string(result);
+	data += ";";
+	data += std::to_string(0.f);
+	data += "$";
+
+	std::string size = std::to_string(data.size());
+	client.connections.back().send(uint8_t(size.size()));
+	client.connections.back().send(size);
+	client.connections.back().send(data);
 }
 
 PlayMode::~PlayMode() {
@@ -134,8 +141,22 @@ void PlayMode::update(float elapsed) {
 	client.connections.back().send(right.downs);
 	client.connections.back().send(down.downs);
 	client.connections.back().send(up.downs);
-	client.connections.back().send(uint8_t(0)); // ball size
-	client.connections.back().send(uint8_t(0)); // players size
+
+	std::string data;
+	data += std::to_string(0);
+	data += ";";
+	
+	std::time_t result = std::time(nullptr);
+	data += std::to_string(result);
+	data += ";";
+	data += std::to_string(elapsed);
+	data += "$";
+
+	std::string size = std::to_string(data.size());
+	client.connections.back().send(uint8_t(size.size()));
+	client.connections.back().send(size);
+	client.connections.back().send(data);
+
 	
 	//reset button press counters:
 	left.downs = 0;
