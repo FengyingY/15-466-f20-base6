@@ -37,11 +37,16 @@ Load< Scene > pool_scene(LoadTagDefault, []() -> Scene const * {
 });
 
 PlayMode::PlayMode(Client &client_) : client(client_), scene(*pool_scene) {
+	std::vector<Scene::Transform*> players;
 	for (auto &transform : scene.transforms)
 	{
 		if (std::strlen(transform.name.c_str()) > 5 && std::strncmp(transform.name.c_str(), "Ball.", 5) == 0)
 		{
 			balls.emplace_back(&transform);
+		}
+		else if (std::strlen(transform.name.c_str()) == 2 && std::strncmp(transform.name.c_str(), "p", 1) == 0)
+		{
+			players.emplace_back(&transform);
 		}
 	}
 
@@ -64,6 +69,15 @@ PlayMode::PlayMode(Client &client_) : client(client_), scene(*pool_scene) {
 		client.connections.back().send((ball->position.y));
 		client.connections.back().send((ball->position.z));
 	}
+
+	client.connections.back().send(uint8_t(players.size()));
+	for (auto &p:players)
+	{
+		client.connections.back().send((p->position.x));
+		client.connections.back().send((p->position.y));
+		client.connections.back().send((p->position.z));
+	}
+	
 }
 
 PlayMode::~PlayMode() {
@@ -121,6 +135,7 @@ void PlayMode::update(float elapsed) {
 	client.connections.back().send(down.downs);
 	client.connections.back().send(up.downs);
 	client.connections.back().send(uint8_t(0)); // ball size
+	client.connections.back().send(uint8_t(0)); // players size
 	
 	//reset button press counters:
 	left.downs = 0;

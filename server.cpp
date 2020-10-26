@@ -39,6 +39,12 @@ int main(int argc, char **argv) {
 	};
 	std::vector<TransformState> balls;
 
+	struct PlayerState
+	{
+		float pos_x = 0.f, pos_y = 0.f, pos_z = 0.f;
+	};
+	std::vector<PlayerState> player_states;
+	
 	//per-client state:
 	struct PlayerInfo {
 		PlayerInfo() {
@@ -52,6 +58,7 @@ int main(int argc, char **argv) {
 		uint32_t right_presses = 0;
 		uint32_t up_presses = 0;
 		uint32_t down_presses = 0;
+
 
 		int32_t total = 0;
 
@@ -138,7 +145,23 @@ int main(int argc, char **argv) {
 							std::cout << balls.size() << "\n";							
 						}
 
-						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + ball_size * 19);
+						uint8_t player_size = c->recv_buffer[6 + ball_size * 19];
+						std::cout << player_size << "\n";
+						if (player_states.size() == 0)
+						{
+							for (size_t i = 0; i < player_size; i++)
+							{
+								player_states.emplace_back();
+								auto &last = player_states[i];
+								std::string px(&c->recv_buffer[6 + ball_size * 19 + 1 +i*12], 4);
+								last.pos_x = atof(px.c_str());
+								std::string py(&c->recv_buffer[6 + ball_size * 19 + 1 +i*12 + 4], 4);
+								last.pos_y = atof(py.c_str());
+								std::string pz(&c->recv_buffer[6 + ball_size * 19 + 1 +i*12 + 8], 4);
+								last.pos_z = atof(pz.c_str());
+							}
+						}
+						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + ball_size * 19 + 1 + player_size * 12);
 					}
 				}
 			}, remain);
