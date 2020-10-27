@@ -99,12 +99,25 @@ int main(int argc, char **argv) {
 	
 	//per-client state:
 	struct PlayerInfo {
-		PlayerInfo() {
+		PlayerInfo(float x): pos(x, 0, 0) {
 			static uint32_t next_player_id = 1;
 			name = "Player" + std::to_string(next_player_id);
 			next_player_id += 1;
 		}
+
+		void reset(float x, float y, float z){
+			direction = glm::vec3(0, 0, 0);
+			connection = NULL;
+			pos = glm::vec3(x, y, z);
+			t = 0.f;
+			elapsed = 0.f;
+			mass = 30.f;
+			speed = 30.f;
+			score = 0;
+		}
+
 		std::string name;
+		Connection * connection;
 
 		glm::vec3 direction = glm::vec3(0, 0, 0);
 		glm::vec3 pos = glm::vec3(0, 0, 0);
@@ -114,7 +127,14 @@ int main(int argc, char **argv) {
 		float speed = 30.f;
 		int score = 0;
 	};
-	std::unordered_map< Connection *, PlayerInfo > players;
+	std::vector<PlayerInfo> player_info;
+	player_info.emplace_back(PlayerInfo(-1.f));
+	player_info.emplace_back(PlayerInfo(1.f));
+
+	enum game_state {Stop, OneRun, TwoRun} state;
+	state = Stop;
+	
+	std::unordered_map< Connection *, PlayerInfo* > players;
 
 	while (true) {
 		static auto next_tick = std::chrono::steady_clock::now() + std::chrono::duration< double >(ServerTick);
@@ -131,15 +151,26 @@ int main(int argc, char **argv) {
 					//client connected:
 
 					//create some player info for them:
-					PlayerInfo new_player = PlayerInfo();
-					// first player
-					if (players.size() == 0) {
-						new_player.pos.x = -1.f;
-					} else { // second player
-						new_player.pos.x = 1.f;
+					for (auto & p : player_info)
+					{
+						if (p.connection == NULL)
+						{
+							p.connection = c;
+							players.emplace(c, &p);
+							break;
+						}
 					}
-					players.emplace(c, new_player);
 
+					if (state == Stop)
+					{
+						state = OneRun;
+					}else if (state == OneRun)
+					{
+						state = TwoRun;
+					}else{
+						// close connection
+						c->close();
+					}
 
 				} else if (evt == Connection::OnClose) {
 					//client disconnected:
@@ -149,7 +180,21 @@ int main(int argc, char **argv) {
 					assert(f != players.end());
 					players.erase(f);
 
+					auto p = f->second;
+					p->connection = NULL;
 
+					if (state == OneRun)
+					{
+						// reset
+						player_info[0].reset(-1.f, 0, 0);
+						player_info[1].reset(1.f, 0, 0);
+						state = Stop;
+						balls.clear();
+					}else if (state == TwoRun)
+					{
+						state = OneRun;
+					}
+					
 				} else { assert(evt == Connection::OnRecv);
 					//got data from client:
 					//std::cout << "got bytes:\n" << hex_dump(c->recv_buffer); std::cout.flush();
@@ -157,7 +202,7 @@ int main(int argc, char **argv) {
 					//look up in players list:
 					auto f = players.find(c);
 					assert(f != players.end());
-					PlayerInfo &player = f->second;
+					PlayerInfo &player = *f->second;
 
 					//handle messages from client:
 					//TODO: update for the sorts of messages your clients send
@@ -184,8 +229,9 @@ int main(int argc, char **argv) {
 						uint8_t size_size = c->recv_buffer[5];
 						std::string size_str(&c->recv_buffer[6], size_size);
 						
-						size_t size; // TODO always fail？？？
+						size_t size;
 						sscanf(size_str.c_str(), "%lu", &size);
+
 						std::string data(&c->recv_buffer[6+size_size], size);
 
 						std::string delimiter = ";";
@@ -193,17 +239,25 @@ int main(int argc, char **argv) {
 						size_t ball_size = atol(ball_size_str.c_str());
 						data.erase(0, data.find(delimiter) + delimiter.length());
 
-						for (size_t i = 0; i < ball_size; i++)
+						if (balls.size() == 0)
 						{
-							balls.emplace_back();
-							auto last = &balls[i];
-							std::string next_ball = data.substr(0, data.find(delimiter));
-							last->name = next_ball.substr(0, next_ball.find(','));
-							next_ball.erase(0, next_ball.find(",")+1);
-							sscanf(next_ball.c_str(),"%f,%f,%f", &last->pos.x, &last->pos.y, &last->pos.z);
-							data.erase(0, data.find(delimiter) + delimiter.length());
+							for (size_t i = 0; i < ball_size; i++)
+							{
+								balls.emplace_back();
+								auto last = &balls[i];
+								std::string next_ball = data.substr(0, data.find(delimiter));
+								last->name = next_ball.substr(0, next_ball.find(','));
+								next_ball.erase(0, next_ball.find(",")+1);
+								sscanf(next_ball.c_str(),"%f,%f,%f", &last->pos.x, &last->pos.y, &last->pos.z);
+								data.erase(0, data.find(delimiter) + delimiter.length());
+							}
 						}
-
+						if (state != TwoRun)
+						{
+							c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + size_size + size);
+							continue;
+						}
+						
 						std::time_t timestamp;
 						float elapsed;
 						//std::cout << data << "\n";
@@ -221,7 +275,8 @@ int main(int argc, char **argv) {
 		//TODO: replace with *your* game state update
 		
 		// boundary detection: restrict the movement via player.elapsed
-		for (auto &[c, player] : players) {
+		for (auto &[c, p] : players) {
+			auto &player = *p;
 			float x = player.pos.x + player.direction.x * player.speed * player.elapsed;
 			if (x < -W) {
 				player.elapsed = (-W - player.pos.x) / (player.speed * player.direction.x);
@@ -242,7 +297,7 @@ int main(int argc, char **argv) {
 
 		// player-player collision detetion: t will be the actual moving distance for players
 		if (players.size() == 2) {
-			PlayerInfo *player1 = &players.begin()->second;
+			PlayerInfo *player1 = players.begin()->second;
 			PlayerInfo *player2 = player1+1;
 			glm::vec3 d = player1->direction * player1->elapsed * player1->speed - player2->direction * player2->elapsed * player2->speed;
 			float collision_time = collision_detection(player1->pos, player2->pos, d, PLAYER_R, PLAYER_R);
@@ -257,8 +312,8 @@ int main(int argc, char **argv) {
 		// assuming that the ball will only collide with one of the player at the same time
 		if (balls.size() > 0) {
 			float elapsed = 0.f;
-			if (players.size() > 0)
-				elapsed = players.begin()->second.elapsed;
+			if (player_info.size() > 0)
+				elapsed = player_info[0].elapsed;
 			// ball boundary detection 
 			float x = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
 			float y = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
@@ -270,7 +325,8 @@ int main(int argc, char **argv) {
 				balls[0].direction.y = -balls[0].direction.y;
 			}
 
-			for (auto &[c, player] : players) {
+			for (auto &[c, p] : players) {
+				auto &player = *p;
 				glm::vec3 d = player.direction * player.elapsed * player.speed - balls[0].direction * player.elapsed * balls[0].speed;
 				float collision_time = collision_detection(player.pos, balls[0].pos, d, PLAYER_R, BALL_R);
 				if (collision_time > 0) {
@@ -288,8 +344,9 @@ int main(int argc, char **argv) {
 
 		std::string status_message = "";
 		int total_score = 0;
-		for (auto &[c, player] : players) {
+		for (auto &[c, p] : players) {
 			// send the latest position to clients 
+			auto &player = *p;
 			player.pos += player.t * player.direction * player.speed;
 
 			(void)c; //work around "unused variable" warning on whTODOatever version of g++ github actions is running
@@ -306,12 +363,13 @@ int main(int argc, char **argv) {
 							  std::to_string(ball.pos.z) + "|";
 		}
 		
-		std::cout << status_message << std::endl; //DEBUG
+		// std::cout << status_message << std::endl; //DEBUG
 
 		//send updated game state to all clients
 		//TODO: update for your game state
-		for (auto &[c, player] : players) {
-			(void)player; //work around "unused variable" warning on whatever g++ github actions uses
+		for (auto &[c, p] : players) {
+			// (void)player; //work around "unused variable" warning on whatever g++ github actions uses
+			auto &player = *p;
 			status_message += std::to_string(player.score) + "|" + std::to_string(total_score - player.score);
 			//send an update starting with 'm', a 24-bit size, and a blob of text:
 			c->send('m');
