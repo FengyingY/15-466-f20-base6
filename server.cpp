@@ -340,8 +340,9 @@ int main(int argc, char **argv) {
 									// update the ball's position
 									glm::vec2 cb = balls[0].pos + balls[0].direction * balls[0].speed * collision_time;
 									glm::vec2 cp = player.pos + player.direction * player.speed * collision_time;
+									glm::vec2 b = balls[0].direction;
 									glm::vec2 n = glm::normalize(cb - cp);
-									glm::vec2 r = glm::normalize(cb - 2 * glm::dot(cb, n) * n);
+									glm::vec2 r = glm::normalize(b - 2 * glm::dot(b, n) * n);
 									/*
 									std::cout << cb.x << ", " << cb.y << std::endl;
 									std::cout << cp.x << ", " << cp.y << std::endl;
