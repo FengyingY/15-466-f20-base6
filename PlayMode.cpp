@@ -96,9 +96,7 @@ PlayMode::~PlayMode() {
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
 
 	if (evt.type == SDL_KEYDOWN) {
-		if (evt.key.repeat) {
-			//ignore repeats
-		} else if (evt.key.keysym.sym == SDLK_a) {
+		if (evt.key.keysym.sym == SDLK_a) {
 			left.downs += 1;
 			left.pressed = true;
 			return true;
@@ -176,11 +174,11 @@ void PlayMode::update(float elapsed) {
 			std::cout << "[" << c->socket << "] closed (!)" << std::endl;
 			throw std::runtime_error("Lost connection to server!");
 		} else { assert(event == Connection::OnRecv);
-			std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush();
+			// std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush();
 			//expecting message(s) like 'm' + 3-byte length + length bytes of text:
 			// messages like name0=(x,y,z), ... , name15=(x,y,z), [my_score], [opponent_score]
 			while (c->recv_buffer.size() >= 4) {
-				std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush();
+				// std::cout << "[" << c->socket << "] recv'd data. Current buffer:\n" << hex_dump(c->recv_buffer); std::cout.flush();
 				char type = c->recv_buffer[0];
 				if (type != 'm') {
 					throw std::runtime_error("Server sent unknown message type '" + std::to_string(type) + "'");
@@ -227,7 +225,7 @@ void PlayMode::update(float elapsed) {
 					server_message.erase(0, server_message.find(delimiter)+1);
 				}
 				
-				sscanf(server_message.c_str(), "%ul|%ul", &my_score, &opponent_score);
+				sscanf(server_message.c_str(), "%d,%d", &my_score, &opponent_score);
 
 				//and consume this part of the buffer:
 				c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 4 + size);

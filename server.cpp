@@ -230,10 +230,6 @@ int main(int argc, char **argv) {
 						int up_count = c->recv_buffer[4];
 
 						player.direction = glm::vec3(right_count - left_count, up_count - down_count, 0);
-						if (player.direction.x != 0 || player.direction.y != 0) {
-							std::cout << int(right_count) << " " << int(left_count) << " " << int(up_count) << " " << int(down_count) << std::endl;
-							std::cout << player.direction.x << " " << player.direction.y << std::endl;
-						}
 						
 						uint8_t size_size = c->recv_buffer[5];
 						std::string size_str(&c->recv_buffer[6], size_size);
@@ -388,7 +384,6 @@ int main(int argc, char **argv) {
 				if (!player.stay && target_dist <= POCKET_R) {
 					player.stay = true;
 					player.score += 1;
-					std::cout <<  player.score << std::endl;
 				}
 				if (player.stay && target_dist > POCKET_R) {
 					player.stay = false;
@@ -416,8 +411,7 @@ int main(int argc, char **argv) {
 		for (auto &[c, p] : players) {
 			// (void)player; //work around "unused variable" warning on whatever g++ github actions uses
 			auto &player = *p;
-			std::string player_message = status_message + std::to_string(player.score) + "|" + std::to_string(total_score - player.score);
-			std::cout << player.score << " " << total_score - player.score << std::endl;
+			std::string player_message = status_message + std::to_string(player.score) + "," + std::to_string(total_score - player.score);
 			//send an update starting with 'm', a 24-bit size, and a blob of text:
 			c->send('m');
 			c->send(uint8_t(player_message.size() >> 16));
