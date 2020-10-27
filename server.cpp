@@ -266,6 +266,68 @@ int main(int argc, char **argv) {
 						player.t = elapsed;
   
 						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + size_size + size);
+
+						// boundary detection: restrict the movement via player.elapsed
+						float x = player.pos.x + player.direction.x * player.speed * player.elapsed;
+						if (x < -W) {
+							player.elapsed = (-W - player.pos.x) / (player.speed * player.direction.x);
+							player.t = player.elapsed;
+						} else if (x > W) {
+							player.elapsed = (W - player.pos.x) / (player.speed * player.direction.x);
+							player.t = player.elapsed;
+						}
+						float y = player.pos.y + player.direction.y * player.speed * player.elapsed;
+						if (y < -H) {
+							player.elapsed = (-H - player.pos.y) / (player.speed * player.direction.y);
+							player.t = player.elapsed;
+						} else if (y > H) {
+							player.elapsed = (H - player.pos.y) / (player.speed * player.direction.y);
+							player.t = player.elapsed;
+						}
+						
+
+						// player-player collision detetion: t will be the actual moving distance for players
+						if (players.size() == 2) {
+							PlayerInfo *player1 = players.begin()->second;
+							PlayerInfo *player2 = player1+1;
+							glm::vec3 d = player1->direction * player1->elapsed * player1->speed - player2->direction * player2->elapsed * player2->speed;
+							float collision_time = collision_detection(player1->pos, player2->pos, d, PLAYER_R, PLAYER_R);
+							// update the 't' of each player
+							if (collision_time > 0) {
+								player1->t = collision_time;
+								player2->t = collision_time;
+							}
+						}
+
+
+						// player-ball collision detection: accumulate the ball's force
+						// assuming that the ball will only collide with one of the player at the same time
+						if (balls.size() > 0) {
+							// ball boundary detection 
+							float x = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
+							float y = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
+							if (x < -W || x > W) {
+								// TODO update ball's position
+								balls[0].direction.x = -balls[0].direction.x;
+							}
+							if (y < -H || y > H) {
+								balls[0].direction.y = -balls[0].direction.y;
+							}
+
+							// ball vs player
+							glm::vec3 d = player.direction * player.elapsed * player.speed - balls[0].direction * player.elapsed * balls[0].speed;
+							float collision_time = collision_detection(player.pos, balls[0].pos, d, PLAYER_R, BALL_R);
+							if (collision_time > 0) {
+								// update the ball's position
+								glm::vec3 cb = balls[0].direction * balls[0].speed;
+								glm::vec3 cp = player.direction * player.speed;
+								glm::vec3 n = glm::normalize(cb - cp);
+								glm::vec3 r = balls[0].direction - 2 * glm::dot(balls[0].direction, n) * n;
+								balls[0].direction = r;
+								balls[0].pos = r * balls[0].speed * (player.elapsed - collision_time);
+								break;
+							}
+						}
 					}
 				}
 			}, remain);
@@ -273,74 +335,6 @@ int main(int argc, char **argv) {
 
 		//update current game state
 		//TODO: replace with *your* game state update
-		
-		// boundary detection: restrict the movement via player.elapsed
-		for (auto &[c, p] : players) {
-			auto &player = *p;
-			float x = player.pos.x + player.direction.x * player.speed * player.elapsed;
-			if (x < -W) {
-				player.elapsed = (-W - player.pos.x) / (player.speed * player.direction.x);
-				player.t = player.elapsed;
-			} else if (x > W) {
-				player.elapsed = (W - player.pos.x) / (player.speed * player.direction.x);
-				player.t = player.elapsed;
-			}
-			float y = player.pos.y + player.direction.y * player.speed * player.elapsed;
-			if (y < -H) {
-				player.elapsed = (-H - player.pos.y) / (player.speed * player.direction.y);
-				player.t = player.elapsed;
-			} else if (y > H) {
-				player.elapsed = (H - player.pos.y) / (player.speed * player.direction.y);
-				player.t = player.elapsed;
-			}
-		}
-
-		// player-player collision detetion: t will be the actual moving distance for players
-		if (players.size() == 2) {
-			PlayerInfo *player1 = players.begin()->second;
-			PlayerInfo *player2 = player1+1;
-			glm::vec3 d = player1->direction * player1->elapsed * player1->speed - player2->direction * player2->elapsed * player2->speed;
-			float collision_time = collision_detection(player1->pos, player2->pos, d, PLAYER_R, PLAYER_R);
-			// update the 't' of each player
-			if (collision_time > 0) {
-				player1->t = collision_time;
-				player2->t = collision_time;
-			}
-		}
-
-		// player-ball collision detection: accumulate the ball's force
-		// assuming that the ball will only collide with one of the player at the same time
-		if (balls.size() > 0) {
-			float elapsed = 0.f;
-			if (player_info.size() > 0)
-				elapsed = player_info[0].elapsed;
-			// ball boundary detection 
-			float x = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
-			float y = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
-			if (x < -W || x > W) {
-				
-				balls[0].direction.x = -balls[0].direction.x;
-			}
-			if (y < -H || y > H) {
-				balls[0].direction.y = -balls[0].direction.y;
-			}
-
-			for (auto &[c, p] : players) {
-				auto &player = *p;
-				glm::vec3 d = player.direction * player.elapsed * player.speed - balls[0].direction * player.elapsed * balls[0].speed;
-				float collision_time = collision_detection(player.pos, balls[0].pos, d, PLAYER_R, BALL_R);
-				if (collision_time > 0) {
-					// update the ball's position
-					glm::vec3 cb = balls[0].direction * balls[0].speed;
-					glm::vec3 cp = player.direction * player.speed;
-					glm::vec3 n = glm::normalize(cb - cp);
-					glm::vec3 r = balls[0].direction - 2 * glm::dot(balls[0].direction, n) * n;
-					balls[0].direction = r;
-					balls[0].pos = r * balls[0].speed * (player.elapsed - collision_time);
-					break;
-				}
-			}
-		}
 
 		std::string status_message = "";
 		int total_score = 0;
@@ -354,7 +348,7 @@ int main(int argc, char **argv) {
 			status_message += player.name + std::to_string(player.pos.x) + "," + 
 							  std::to_string(player.pos.y) + "," + 
 							  std::to_string(player.pos.z) + "|";
-
+			
 			total_score += player.score;
 		}
 		for (auto ball : balls) {
