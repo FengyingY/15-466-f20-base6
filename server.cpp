@@ -90,8 +90,8 @@ int main(int argc, char **argv) {
 	{
 		glm::vec3 pos = glm::vec3(0, 0, 0);
 		float mass = 60.f;
-		glm::vec3 direction;
-		float speed;
+		glm::vec3 direction = glm::vec3(0, 0, 0);
+		float speed = 0.0f;
 
 		std::string name;
 	};
@@ -170,15 +170,17 @@ int main(int argc, char **argv) {
 							c->close();
 							return;
 						}
-						uint8_t left_count = c->recv_buffer[1];
-						uint8_t right_count = c->recv_buffer[2];
-						uint8_t down_count = c->recv_buffer[3];
-						uint8_t up_count = c->recv_buffer[4];
+						int left_count = c->recv_buffer[1];
+						int right_count = c->recv_buffer[2];
+						int down_count = c->recv_buffer[3];
+						int up_count = c->recv_buffer[4];
 
-						player.direction = glm::normalize(glm::vec3(right_count - left_count, up_count - down_count, 0));
-						std::cout << right_count << " " << left_count << " " << up_count << " " << down_count << std::endl;
-						std::cout << player.direction.x << " " << player.direction.y << std::endl;
-
+						player.direction = glm::vec3(right_count - left_count, up_count - down_count, 0);
+						if (player.direction.x != 0 || player.direction.y != 0) {
+							std::cout << int(right_count) << " " << int(left_count) << " " << int(up_count) << " " << int(down_count) << std::endl;
+							std::cout << player.direction.x << " " << player.direction.y << std::endl;
+						}
+						
 						uint8_t size_size = c->recv_buffer[5];
 						std::string size_str(&c->recv_buffer[6], size_size);
 						
@@ -223,14 +225,18 @@ int main(int argc, char **argv) {
 			float x = player.pos.x + player.direction.x * player.speed * player.elapsed;
 			if (x < -W) {
 				player.elapsed = (-W - player.pos.x) / (player.speed * player.direction.x);
+				player.t = player.elapsed;
 			} else if (x > W) {
 				player.elapsed = (W - player.pos.x) / (player.speed * player.direction.x);
+				player.t = player.elapsed;
 			}
 			float y = player.pos.y + player.direction.y * player.speed * player.elapsed;
 			if (y < -H) {
 				player.elapsed = (-H - player.pos.y) / (player.speed * player.direction.y);
+				player.t = player.elapsed;
 			} else if (y > H) {
 				player.elapsed = (H - player.pos.y) / (player.speed * player.direction.y);
+				player.t = player.elapsed;
 			}
 		}
 
@@ -250,6 +256,20 @@ int main(int argc, char **argv) {
 		// player-ball collision detection: accumulate the ball's force
 		// assuming that the ball will only collide with one of the player at the same time
 		if (balls.size() > 0) {
+			float elapsed = 0.f;
+			if (players.size() > 0)
+				elapsed = players.begin()->second.elapsed;
+			// ball boundary detection 
+			float x = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
+			float y = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
+			if (x < -W || x > W) {
+				
+				balls[0].direction.x = -balls[0].direction.x;
+			}
+			if (y < -H || y > H) {
+				balls[0].direction.y = -balls[0].direction.y;
+			}
+
 			for (auto &[c, player] : players) {
 				glm::vec3 d = player.direction * player.elapsed * player.speed - balls[0].direction * player.elapsed * balls[0].speed;
 				float collision_time = collision_detection(player.pos, balls[0].pos, d, PLAYER_R, BALL_R);
@@ -285,6 +305,7 @@ int main(int argc, char **argv) {
 							  std::to_string(ball.pos.y) + "," + 
 							  std::to_string(ball.pos.z) + "|";
 		}
+		
 		std::cout << status_message << std::endl; //DEBUG
 
 		//send updated game state to all clients
