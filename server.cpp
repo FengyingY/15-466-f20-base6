@@ -13,8 +13,8 @@
 #include <unordered_map>
 
 
-#define PLAYER_R 0.3
-#define BALL_R 0.5
+#define PLAYER_R 0.15
+#define BALL_R 0.15
 #define W 3
 #define H 2
 // find the closest point for moving circle c1 and static circle c2
@@ -83,15 +83,15 @@ int main(int argc, char **argv) {
 
 
 	//------------ main loop ------------
-	constexpr float ServerTick = 1.0f / 10.0f; //TODO: set a server tick that makes sense for your game
+	constexpr float ServerTick = 0.10f / 10.0f; //TODO: set a server tick that makes sense for your game
 
 	//server state:
 	struct TransformState
 	{
 		glm::vec3 pos = glm::vec3(0, 0, 0);
 		float mass = 60.f;
-		glm::vec3 direction = glm::vec3(0, 0, 0);
-		float speed = 0.0f;
+		glm::vec3 direction = glm::vec3(1, 1, 0);
+		float speed = 1.0f;
 
 		std::string name;
 	};
@@ -112,19 +112,19 @@ int main(int argc, char **argv) {
 			t = 0.f;
 			elapsed = 0.f;
 			mass = 30.f;
-			speed = 30.f;
+			speed = 3.f;
 			score = 0;
 		}
 
 		std::string name;
-		Connection * connection;
+		Connection * connection = NULL;
 
 		glm::vec3 direction = glm::vec3(0, 0, 0);
 		glm::vec3 pos = glm::vec3(0, 0, 0);
 		float t = 0.f;
 		float elapsed= 0.f;
 		float mass = 30.f;
-		float speed = 30.f;
+		float speed = 3.f;
 		int score = 0;
 	};
 	std::vector<PlayerInfo> player_info;
@@ -267,25 +267,28 @@ int main(int argc, char **argv) {
   
 						c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 6 + size_size + size);
 
-						// boundary detection: restrict the movement via player.elapsed
-						float x = player.pos.x + player.direction.x * player.speed * player.elapsed;
-						if (x < -W) {
-							player.elapsed = (-W - player.pos.x) / (player.speed * player.direction.x);
-							player.t = player.elapsed;
-						} else if (x > W) {
-							player.elapsed = (W - player.pos.x) / (player.speed * player.direction.x);
-							player.t = player.elapsed;
-						}
-						float y = player.pos.y + player.direction.y * player.speed * player.elapsed;
-						if (y < -H) {
-							player.elapsed = (-H - player.pos.y) / (player.speed * player.direction.y);
-							player.t = player.elapsed;
-						} else if (y > H) {
-							player.elapsed = (H - player.pos.y) / (player.speed * player.direction.y);
-							player.t = player.elapsed;
-						}
 						
-
+						// boundary detection: restrict the movement via player.elapsed
+						bool player_hit_boundary = false;
+						float x = player.pos.x + player.direction.x * player.speed * player.elapsed;
+						float y = player.pos.y + player.direction.y * player.speed * player.elapsed;
+						if (x < -W + PLAYER_R) {
+							player.pos.x = -W + PLAYER_R;
+							player_hit_boundary = true;
+						} else if (x >  W - PLAYER_R) {
+							player.pos.x = W - PLAYER_R;
+							player_hit_boundary = true;
+						}
+						if (y < -H + PLAYER_R) {
+							player.pos.y = -H + PLAYER_R;
+							player_hit_boundary = true;
+						} else if (y > H - PLAYER_R) {
+							player.pos.y = H - PLAYER_R;
+							player_hit_boundary = true;
+						}
+						(void) player_hit_boundary;
+						
+/*
 						// player-player collision detetion: t will be the actual moving distance for players
 						if (players.size() == 2) {
 							PlayerInfo *player1 = players.begin()->second;
@@ -298,34 +301,51 @@ int main(int argc, char **argv) {
 								player2->t = collision_time;
 							}
 						}
-
+*/
+						player.pos += player.direction * player.speed * player.elapsed;
 
 						// player-ball collision detection: accumulate the ball's force
 						// assuming that the ball will only collide with one of the player at the same time
 						if (balls.size() > 0) {
+							bool hit_boundary = false;
 							// ball boundary detection 
 							float x = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
 							float y = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
-							if (x < -W || x > W) {
-								// TODO update ball's position
+							if (x < -W + BALL_R || x > W - BALL_R) {
+								float collision_time = (glm::abs(-W+BALL_R) - glm::abs(balls[0].pos.x)) / glm::abs(balls[0].direction.x * balls[0].speed);
+								glm::vec3 collision_point = balls[0].pos + balls[0].direction * balls[0].speed * collision_time;
+								// update ball's position
 								balls[0].direction.x = -balls[0].direction.x;
-							}
-							if (y < -H || y > H) {
+								balls[0].pos = collision_point + balls[0].direction * balls[0].speed * (elapsed - collision_time);
+								hit_boundary = true;
+							} 
+							if (y < -H + BALL_R || y > H - BALL_R) {
+								float collision_time = (glm::abs(-H+BALL_R) - glm::abs(balls[0].pos.y)) / glm::abs(balls[0].direction.y * balls[0].speed);
+								glm::vec3 collision_point = balls[0].pos + balls[0].direction * balls[0].speed * collision_time;
+								// update ball's position
 								balls[0].direction.y = -balls[0].direction.y;
+								balls[0].pos = collision_point + balls[0].direction * balls[0].speed * (elapsed - collision_time);
+								hit_boundary = true;
 							}
 
 							// ball vs player
-							glm::vec3 d = player.direction * player.elapsed * player.speed - balls[0].direction * player.elapsed * balls[0].speed;
-							float collision_time = collision_detection(player.pos, balls[0].pos, d, PLAYER_R, BALL_R);
-							if (collision_time > 0) {
-								// update the ball's position
-								glm::vec3 cb = balls[0].direction * balls[0].speed;
-								glm::vec3 cp = player.direction * player.speed;
-								glm::vec3 n = glm::normalize(cb - cp);
-								glm::vec3 r = balls[0].direction - 2 * glm::dot(balls[0].direction, n) * n;
-								balls[0].direction = r;
-								balls[0].pos = r * balls[0].speed * (player.elapsed - collision_time);
-								break;
+							/*
+							if (!hit_boundary) {
+								glm::vec3 d = player.direction * player.elapsed * player.speed - balls[0].direction * player.elapsed * balls[0].speed;
+								float collision_time = collision_detection(player.pos, balls[0].pos, d, PLAYER_R, BALL_R);
+								if (collision_time > 0) {
+									// update the ball's position
+									glm::vec3 cb = balls[0].direction * balls[0].speed;
+									glm::vec3 cp = player.direction * player.speed;
+									glm::vec3 n = glm::normalize(cb - cp);
+									glm::vec3 r = balls[0].direction - 2 * glm::dot(balls[0].direction, n) * n;
+									balls[0].direction = r;
+									balls[0].pos = r * balls[0].speed * (player.elapsed - collision_time);
+								}
+							}*/
+
+							if (!hit_boundary) {
+								balls[0].pos += balls[0].direction * balls[0].speed * elapsed;
 							}
 						}
 					}
@@ -341,7 +361,7 @@ int main(int argc, char **argv) {
 		for (auto &[c, p] : players) {
 			// send the latest position to clients 
 			auto &player = *p;
-			player.pos += player.t * player.direction * player.speed;
+			// player.pos += player.t * player.direction * player.speed;
 
 			(void)c; //work around "unused variable" warning on whTODOatever version of g++ github actions is running
 
