@@ -39,16 +39,15 @@ Load< Scene > pool_scene(LoadTagDefault, []() -> Scene const * {
 });
 
 PlayMode::PlayMode(Client &client_) : client(client_), scene(*pool_scene) {
-	std::vector<Scene::Transform*> players;
 	for (auto &transform : scene.transforms)
 	{
 		if (std::strlen(transform.name.c_str()) > 5 && std::strncmp(transform.name.c_str(), "Ball.", 5) == 0)
 		{
-			balls.emplace_back(&transform);
+			balls.emplace(transform.name, &transform);
 		}
-		else if (std::strlen(transform.name.c_str()) == 2 && std::strncmp(transform.name.c_str(), "p", 1) == 0)
+		else if (std::strlen(transform.name.c_str()) == 7 && std::strncmp(transform.name.c_str(), "Player", 6) == 0)
 		{
-			players.emplace_back(&transform);
+			players.emplace(transform.name, &transform);
 		}
 		std::cout << transform.name.c_str() << "\n" ;
 	}
@@ -63,7 +62,7 @@ PlayMode::PlayMode(Client &client_) : client(client_), scene(*pool_scene) {
 	std::string data;
 	data += std::to_string(balls.size());
 	data += ";";
-	for (auto &ball:balls)
+	for (auto &[name, ball]:balls)
 	{
 		data += ball->name;
 		data += ",";
@@ -192,6 +191,43 @@ void PlayMode::update(float elapsed) {
 				if (c->recv_buffer.size() < 4 + size) break; //if whole message isn't here, can't process
 				//whole message *is* here, so set current server message:
 				server_message = std::string(c->recv_buffer.begin() + 4, c->recv_buffer.begin() + 4 + size);
+				
+				std::string delimiter = "|";
+
+				for (size_t i = 0; i < players.size(); i++)
+				{
+					if (server_message[0] != 'P')
+					{
+						break;
+					}
+					std::string player_str = server_message.substr(0, server_message.find(delimiter));
+					std::string player_name = player_str.substr(0, 7);
+					auto p = players.find(player_name);
+					assert(p != players.end());
+					player_str.erase(0, player_name.length());
+					auto &player_transform = p->second;
+					sscanf(player_str.c_str(), "%f,%f,%f", &player_transform->position.x, &player_transform->position.y, &player_transform->position.z);
+					server_message.erase(0, server_message.find(delimiter)+1);
+				}
+				
+
+				for (size_t i = 0; i < balls.size(); i++)
+				{
+					if (server_message[0] != 'B')
+					{
+						break;
+					}
+					std::string ball_str = server_message.substr(0, server_message.find(delimiter));
+					std::string name = ball_str.substr(0, 7);
+					auto b = balls.find(name);
+					assert(b != balls.end());
+					ball_str.erase(0, name.length());
+					auto &ball_transform = b->second;
+					sscanf(ball_str.c_str(), "%f,%f,%f", &ball_transform->position.x, &ball_transform->position.y, &ball_transform->position.z);
+					server_message.erase(0, server_message.find(delimiter)+1);
+				}
+				
+				sscanf(server_message.c_str(), "%ul|%ul", &my_score, &opponent_score);
 
 				//and consume this part of the buffer:
 				c->recv_buffer.erase(c->recv_buffer.begin(), c->recv_buffer.begin() + 4 + size);
@@ -257,8 +293,11 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 				glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 				glm::u8vec4(0xff, 0xff, 0xff, 0x00));
 		};
+		std::string my_score_str = "YOU : OPPONENT";
+		std::string op_score_str = std::to_string(my_score) + " : " + std::to_string(opponent_score);
 
-		draw_text(glm::vec2(-aspect + 0.1f, 0.0f), server_message, 0.09f);
+		draw_text(glm::vec2(-aspect + 0.1f, 0.1f), my_score_str, 0.09f);
+		draw_text(glm::vec2(-aspect + 0.2f, -0.1f), op_score_str, 0.09f);
 
 		draw_text(glm::vec2(-aspect + 0.1f,-0.9f), "(press WASD to change your total)", 0.09f);
 	}

@@ -32,10 +32,11 @@ struct PlayMode : Mode {
 	Client &client;
 	Scene scene;
 
-	std::vector<Scene::Transform*> balls;
+	std::unordered_map<std::string, Scene::Transform*> balls;
+	// std::vector<Scene::Transform*> balls;
 	Scene::Camera *camera = nullptr;
 	
-	std::vector<Scene::Transform*> players;
+	std::unordered_map<std::string, Scene::Transform*> players;
 
 	unsigned int my_score;
 	unsigned int opponent_score;
