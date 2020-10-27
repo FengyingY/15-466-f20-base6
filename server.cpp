@@ -13,6 +13,57 @@
 #include <unordered_map>
 
 
+#define PLAYER_R 0.3
+#define BALL_R 0.5
+#define W 3
+#define H 2
+// find the closest point for moving circle c1 and static circle c2
+glm::vec2 closest_point(glm::vec2 c1, glm::vec2 c2, glm::vec2 direction) {
+	/*
+	float slope = direction.y / direction.x;
+	float x, y;
+	if (slope == -1.f) {
+		x = (c1.y - c2.y + c1.x - c2.x) / 2;
+		y = (c1.x + c2.x + c2.y + c1.y) / 2;
+	} else if (slope == 1.f) {
+		x = (c2.y - c1.y + c1.x + c2.x) / 2;
+		y = (c1.x - c2.x + c2.y + c1.y) / 2;
+	} else {
+		x = (slope * (c2.y - c1.y + slope * c1.x) - c2.x) / (slope * slope - 1);
+		y = (slope * (c1.x - c2.x + slope * c2.y) - c1.y) / (slope * slope - 1);
+	}
+	return glm::vec2(x, y);*/
+	// https://ericleong.me/research/circle-circle/#static-circle-collision
+	float lx1 = c1.x, ly1 = c1.y, lx2 = c1.x+direction.x, ly2 = c1.y+direction.y, x0 = c2.x, y0 = c2.y;
+	float A1 = ly2 - ly1; 
+	float B1 = lx1 - lx2; 
+	double C1 = (ly2 - ly1)*lx1 + (lx1 - lx2)*ly1; 
+	double C2 = -B1*x0 + A1*y0; 
+	double det = A1*A1 - -B1*B1; 
+	double cx = 0; 
+	double cy = 0; 
+	if (det != 0) { 
+		cx = (float)((A1*C1 - B1*C2)/det); 
+		cy = (float)((A1*C2 - -B1*C1)/det); 
+     } else { 
+    	cx = x0; 
+    	cy = y0; 
+    } 
+    return glm::vec2(cx, cy); 
+}
+
+// direction = end_position - start_position of circle 1
+float collision_detection(glm::vec2 pos1, glm::vec2 pos2, glm::vec2 direction, float r1, float r2) {
+	glm::vec2 d = closest_point(pos1, pos2, direction);
+	float closest_distance = glm::pow(pos2.x - d.x, 2) + glm::pow(pos2.y - d.y, 2);
+	if (closest_distance <= glm::pow(r1 + r2, 2)) {
+		// collision detected
+		return glm::sqrt(glm::pow(r1+r2, 2) - closest_distance);
+	} else {
+		return -1;
+	}
+}
+
 int main(int argc, char **argv) {
 #ifdef _WIN32
 	//when compiled on windows, unhandled exceptions don't have their message printed, which can make debugging simple issues difficult.
@@ -39,8 +90,8 @@ int main(int argc, char **argv) {
 	{
 		glm::vec3 pos = glm::vec3(0, 0, 0);
 		float mass = 60.f;
-		glm::vec2 force;
-		glm::vec2 speed;
+		glm::vec3 direction;
+		float speed;
 
 		std::string name;
 	};
@@ -55,14 +106,10 @@ int main(int argc, char **argv) {
 		}
 		std::string name;
 
-		uint32_t left_presses = 0;
-		uint32_t right_presses = 0;
-		uint32_t up_presses = 0;
-		uint32_t down_presses = 0;
-
+		glm::vec3 direction = glm::vec3(0, 0, 0);
 		glm::vec3 pos = glm::vec3(0, 0, 0);
-		float t;
-		float elapsed;
+		float t = 0.f;
+		float elapsed= 0.f;
 		float mass = 30.f;
 		float speed = 30.f;
 		int score = 0;
@@ -105,7 +152,7 @@ int main(int argc, char **argv) {
 
 				} else { assert(evt == Connection::OnRecv);
 					//got data from client:
-					std::cout << "got bytes:\n" << hex_dump(c->recv_buffer); std::cout.flush();
+					//std::cout << "got bytes:\n" << hex_dump(c->recv_buffer); std::cout.flush();
 
 					//look up in players list:
 					auto f = players.find(c);
@@ -118,7 +165,7 @@ int main(int argc, char **argv) {
 						//expecting five-byte messages 'b' (left count) (right count) (down count) (up count)
 						char type = c->recv_buffer[0];
 						if (type != 'b') {
-							std::cout << " message of non-'b' type received from client!" << std::endl;
+							//std::cout << " message of non-'b' type received from client!" << std::endl;
 							//shut down client connection:
 							c->close();
 							return;
@@ -128,11 +175,10 @@ int main(int argc, char **argv) {
 						uint8_t down_count = c->recv_buffer[3];
 						uint8_t up_count = c->recv_buffer[4];
 
-						player.left_presses += left_count;
-						player.right_presses += right_count;
-						player.down_presses += down_count;
-						player.up_presses += up_count;
-						
+						player.direction = glm::normalize(glm::vec3(right_count - left_count, up_count - down_count, 0));
+						std::cout << right_count << " " << left_count << " " << up_count << " " << down_count << std::endl;
+						std::cout << player.direction.x << " " << player.direction.y << std::endl;
+
 						uint8_t size_size = c->recv_buffer[5];
 						std::string size_str(&c->recv_buffer[6], size_size);
 						
@@ -158,7 +204,7 @@ int main(int argc, char **argv) {
 
 						std::time_t timestamp;
 						float elapsed;
-						std::cout << data << "\n";
+						//std::cout << data << "\n";
 						sscanf(data.c_str(), "%lu;%f$", &timestamp, &elapsed);
 						player.elapsed = elapsed;
 						player.t = elapsed;
@@ -172,23 +218,59 @@ int main(int argc, char **argv) {
 		//update current game state
 		//TODO: replace with *your* game state update
 		
-		// player-player collision detetion
-		// update the 't' of each player
-		
+		// boundary detection: restrict the movement via player.elapsed
+		for (auto &[c, player] : players) {
+			float x = player.pos.x + player.direction.x * player.speed * player.elapsed;
+			if (x < -W) {
+				player.elapsed = (-W - player.pos.x) / (player.speed * player.direction.x);
+			} else if (x > W) {
+				player.elapsed = (W - player.pos.x) / (player.speed * player.direction.x);
+			}
+			float y = player.pos.y + player.direction.y * player.speed * player.elapsed;
+			if (y < -H) {
+				player.elapsed = (-H - player.pos.y) / (player.speed * player.direction.y);
+			} else if (y > H) {
+				player.elapsed = (H - player.pos.y) / (player.speed * player.direction.y);
+			}
+		}
 
-		// player-ball collision detection
-		// 1. accumulate the ball's force 
-		// 2. update the player's t if necessary 
-			
+		// player-player collision detetion: t will be the actual moving distance for players
+		if (players.size() == 2) {
+			PlayerInfo *player1 = &players.begin()->second;
+			PlayerInfo *player2 = player1+1;
+			glm::vec3 d = player1->direction * player1->elapsed * player1->speed - player2->direction * player2->elapsed * player2->speed;
+			float collision_time = collision_detection(player1->pos, player2->pos, d, PLAYER_R, PLAYER_R);
+			// update the 't' of each player
+			if (collision_time > 0) {
+				player1->t = collision_time;
+				player2->t = collision_time;
+			}
+		}
+
+		// player-ball collision detection: accumulate the ball's force
+		// assuming that the ball will only collide with one of the player at the same time
+		if (balls.size() > 0) {
+			for (auto &[c, player] : players) {
+				glm::vec3 d = player.direction * player.elapsed * player.speed - balls[0].direction * player.elapsed * balls[0].speed;
+				float collision_time = collision_detection(player.pos, balls[0].pos, d, PLAYER_R, BALL_R);
+				if (collision_time > 0) {
+					// update the ball's position
+					glm::vec3 cb = balls[0].direction * balls[0].speed;
+					glm::vec3 cp = player.direction * player.speed;
+					glm::vec3 n = glm::normalize(cb - cp);
+					glm::vec3 r = balls[0].direction - 2 * glm::dot(balls[0].direction, n) * n;
+					balls[0].direction = r;
+					balls[0].pos = r * balls[0].speed * (player.elapsed - collision_time);
+					break;
+				}
+			}
+		}
 
 		std::string status_message = "";
 		int total_score = 0;
 		for (auto &[c, player] : players) {
-			// TODO  update the position with t of players and ball's force
-
 			// send the latest position to clients 
-			glm::vec3 dir = glm::vec3(player.right_presses - player.left_presses, player.up_presses - player.down_presses, 0);
-			player.pos += player.t * dir * player.speed;
+			player.pos += player.t * player.direction * player.speed;
 
 			(void)c; //work around "unused variable" warning on whTODOatever version of g++ github actions is running
 
@@ -203,7 +285,7 @@ int main(int argc, char **argv) {
 							  std::to_string(ball.pos.y) + "," + 
 							  std::to_string(ball.pos.z) + "|";
 		}
-		//std::cout << status_message << std::endl; //DEBUG
+		std::cout << status_message << std::endl; //DEBUG
 
 		//send updated game state to all clients
 		//TODO: update for your game state
