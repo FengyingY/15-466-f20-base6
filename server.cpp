@@ -15,6 +15,7 @@
 
 #define PLAYER_R 0.15
 #define BALL_R 0.15
+#define POCKET_R 0.5
 #define W 3
 #define H 2
 // find the closest point for moving circle c1 and static circle c2
@@ -56,9 +57,15 @@ glm::vec2 closest_point(glm::vec2 c1, glm::vec2 c2, glm::vec2 direction) {
 float collision_detection(glm::vec2 pos1, glm::vec2 pos2, glm::vec2 direction, float r1, float r2) {
 	glm::vec2 d = closest_point(pos1, pos2, direction);
 	float closest_distance = glm::pow(pos2.x - d.x, 2) + glm::pow(pos2.y - d.y, 2);
+
+	//std::cout << "(" << pos2.x << ", " << pos2.y << ") " << d.x << ", " << d.y << " " << closest_distance << std::endl;
+
 	if (closest_distance <= glm::pow(r1 + r2, 2)) {
 		// collision detected
-		return glm::sqrt(glm::pow(r1+r2, 2) - closest_distance);
+		float back_dist = glm::sqrt(glm::pow(r1+r2, 2) - closest_distance);
+		float dist = glm::sqrt(glm::pow(pos1.x - d.x, 2) + glm::pow(pos1.y - d.y, 2));
+		//std::cout << "collision detected: " << dist-back_dist << std::endl;
+		return dist - back_dist;
 	} else {
 		return -1;
 	}
@@ -90,7 +97,7 @@ int main(int argc, char **argv) {
 	{
 		glm::vec3 pos = glm::vec3(0, 0, 0);
 		float mass = 60.f;
-		glm::vec3 direction = glm::vec3(1, 1, 0);
+		glm::vec3 direction = glm::vec3(1, 0, 0);
 		float speed = 1.0f;
 
 		std::string name;
@@ -99,7 +106,7 @@ int main(int argc, char **argv) {
 	
 	//per-client state:
 	struct PlayerInfo {
-		PlayerInfo(float x): pos(x, 0, 0) {
+		PlayerInfo(float x, float y): pos(x, 0, 0), target_pos(y, 0, 0) {
 			static uint32_t next_player_id = 1;
 			name = "Player" + std::to_string(next_player_id);
 			next_player_id += 1;
@@ -121,15 +128,17 @@ int main(int argc, char **argv) {
 
 		glm::vec3 direction = glm::vec3(0, 0, 0);
 		glm::vec3 pos = glm::vec3(0, 0, 0);
+		glm::vec3 target_pos = glm::vec3(-1, -1, -1);
 		float t = 0.f;
 		float elapsed= 0.f;
 		float mass = 30.f;
 		float speed = 3.f;
 		int score = 0;
+		bool stay = false;
 	};
 	std::vector<PlayerInfo> player_info;
-	player_info.emplace_back(PlayerInfo(-1.f));
-	player_info.emplace_back(PlayerInfo(1.f));
+	player_info.emplace_back(PlayerInfo(-1.f, W));
+	player_info.emplace_back(PlayerInfo(1.f, -W));
 
 	enum game_state {Stop, OneRun, TwoRun} state;
 	state = Stop;
@@ -301,8 +310,9 @@ int main(int argc, char **argv) {
 								player2->t = collision_time;
 							}
 						}
-*/
+						*/
 						player.pos += player.direction * player.speed * player.elapsed;
+
 
 						// player-ball collision detection: accumulate the ball's force
 						// assuming that the ball will only collide with one of the player at the same time
@@ -310,42 +320,60 @@ int main(int argc, char **argv) {
 							bool hit_boundary = false;
 							// ball boundary detection 
 							float x = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
-							float y = balls[0].pos.x + balls[0].direction.x * balls[0].speed * elapsed;
+							float y = balls[0].pos.y + balls[0].direction.y * balls[0].speed * elapsed;
 							if (x < -W + BALL_R || x > W - BALL_R) {
-								float collision_time = (glm::abs(-W+BALL_R) - glm::abs(balls[0].pos.x)) / glm::abs(balls[0].direction.x * balls[0].speed);
-								glm::vec3 collision_point = balls[0].pos + balls[0].direction * balls[0].speed * collision_time;
 								// update ball's position
+								balls[0].pos += balls[0].direction * balls[0].speed * elapsed;
+								balls[0].pos.x = x < 0 ?  2*(-W + BALL_R) - balls[0].pos.x : 2*(W - BALL_R) - balls[0].pos.x;
 								balls[0].direction.x = -balls[0].direction.x;
-								balls[0].pos = collision_point + balls[0].direction * balls[0].speed * (elapsed - collision_time);
 								hit_boundary = true;
 							} 
 							if (y < -H + BALL_R || y > H - BALL_R) {
-								float collision_time = (glm::abs(-H+BALL_R) - glm::abs(balls[0].pos.y)) / glm::abs(balls[0].direction.y * balls[0].speed);
-								glm::vec3 collision_point = balls[0].pos + balls[0].direction * balls[0].speed * collision_time;
 								// update ball's position
+								balls[0].pos += balls[0].direction * balls[0].speed * elapsed;
+								balls[0].pos.y = y < 0 ?  2*(-H + BALL_R) - balls[0].pos.y : 2*(H - BALL_R) - balls[0].pos.y;
 								balls[0].direction.y = -balls[0].direction.y;
-								balls[0].pos = collision_point + balls[0].direction * balls[0].speed * (elapsed - collision_time);
 								hit_boundary = true;
 							}
 
 							// ball vs player
-							/*
 							if (!hit_boundary) {
 								glm::vec3 d = player.direction * player.elapsed * player.speed - balls[0].direction * player.elapsed * balls[0].speed;
 								float collision_time = collision_detection(player.pos, balls[0].pos, d, PLAYER_R, BALL_R);
-								if (collision_time > 0) {
+								if (collision_time > 0 && collision_time < elapsed) {
 									// update the ball's position
-									glm::vec3 cb = balls[0].direction * balls[0].speed;
-									glm::vec3 cp = player.direction * player.speed;
-									glm::vec3 n = glm::normalize(cb - cp);
-									glm::vec3 r = balls[0].direction - 2 * glm::dot(balls[0].direction, n) * n;
-									balls[0].direction = r;
-									balls[0].pos = r * balls[0].speed * (player.elapsed - collision_time);
+									glm::vec2 cb = balls[0].pos + balls[0].direction * balls[0].speed * collision_time;
+									glm::vec2 cp = player.pos + player.direction * player.speed * collision_time;
+									glm::vec2 n = glm::normalize(cb - cp);
+									glm::vec2 r = glm::normalize(cb - 2 * glm::dot(cb, n) * n);
+									/*
+									std::cout << cb.x << ", " << cb.y << std::endl;
+									std::cout << cp.x << ", " << cp.y << std::endl;
+									std::cout << n.x << ", " << n.y << std::endl;
+									std::cout << r.x << ", " << r.y << std::endl;
+									*/
+									glm::vec3 collision_point = balls[0].pos + balls[0].direction * balls[0].speed * collision_time;
+									//std::cout << "before: " << balls[0].direction.x << " ";
+									balls[0].direction.x = r.x;
+									balls[0].direction.y = r.y;
+									//std::cout << "after: " << balls[0].direction.x << std::endl;;
+									balls[0].pos = collision_point + balls[0].direction * balls[0].speed * (elapsed - collision_time);
+									hit_boundary = true;
 								}
-							}*/
+							}
 
 							if (!hit_boundary) {
 								balls[0].pos += balls[0].direction * balls[0].speed * elapsed;
+							}
+
+							// scoring 
+							float target_dist = glm::distance(balls[0].pos, player.target_pos);
+							if (!player.stay && target_dist <= POCKET_R) {
+								player.stay = true;
+								player.score += 1;
+							}
+							if (player.stay && target_dist > POCKET_R) {
+								player.stay = false;
 							}
 						}
 					}
