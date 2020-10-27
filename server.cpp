@@ -366,15 +366,7 @@ int main(int argc, char **argv) {
 								balls[0].pos += balls[0].direction * balls[0].speed * elapsed;
 							}
 
-							// scoring 
-							float target_dist = glm::distance(balls[0].pos, player.target_pos);
-							if (!player.stay && target_dist <= POCKET_R) {
-								player.stay = true;
-								player.score += 1;
-							}
-							if (player.stay && target_dist > POCKET_R) {
-								player.stay = false;
-							}
+							
 						}
 					}
 				}
@@ -389,7 +381,19 @@ int main(int argc, char **argv) {
 		for (auto &[c, p] : players) {
 			// send the latest position to clients 
 			auto &player = *p;
-			// player.pos += player.t * player.direction * player.speed;
+			// scoring 
+			if (balls.size() > 0) {
+				float target_dist = glm::distance(balls[0].pos, player.target_pos);
+				// std::cout << player.target_pos.x << " " << balls[0].pos.x << " " << target_dist << std::endl;
+				if (!player.stay && target_dist <= POCKET_R) {
+					player.stay = true;
+					player.score += 1;
+					std::cout <<  player.score << std::endl;
+				}
+				if (player.stay && target_dist > POCKET_R) {
+					player.stay = false;
+				}
+			}
 
 			(void)c; //work around "unused variable" warning on whTODOatever version of g++ github actions is running
 
@@ -412,13 +416,14 @@ int main(int argc, char **argv) {
 		for (auto &[c, p] : players) {
 			// (void)player; //work around "unused variable" warning on whatever g++ github actions uses
 			auto &player = *p;
-			status_message += std::to_string(player.score) + "|" + std::to_string(total_score - player.score);
+			std::string player_message = status_message + std::to_string(player.score) + "|" + std::to_string(total_score - player.score);
+			std::cout << player.score << " " << total_score - player.score << std::endl;
 			//send an update starting with 'm', a 24-bit size, and a blob of text:
 			c->send('m');
-			c->send(uint8_t(status_message.size() >> 16));
-			c->send(uint8_t((status_message.size() >> 8) % 256));
-			c->send(uint8_t(status_message.size() % 256));
-			c->send_buffer.insert(c->send_buffer.end(), status_message.begin(), status_message.end());
+			c->send(uint8_t(player_message.size() >> 16));
+			c->send(uint8_t((player_message.size() >> 8) % 256));
+			c->send(uint8_t(player_message.size() % 256));
+			c->send_buffer.insert(c->send_buffer.end(), player_message.begin(), player_message.end());
 		}
 
 	}
